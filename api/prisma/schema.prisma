@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DeviceKind {
+  cluster
+  pcs
+}
+
+enum AlarmLevel {
+  critical
+  warning
+  info
+}
+
+model Device {
+  id          String     @id
+  cabinetId   String
+  cabinetName String
+  kind        DeviceKind
+  name        String
+  online      Boolean    @default(true)
+  soc         Float      @default(0)
+  soh         Float      @default(0)
+  voltage     Float      @default(0)
+  current     Float      @default(0)
+  temp        Float      @default(0)
+  power       Float      @default(0)
+  alarm       Boolean    @default(false)
+  alarmText   String     @default("正常")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  telemetry   Telemetry[]
+  alarms      Alarm[]
+
+  @@index([cabinetId, kind])
+}
+
+model Telemetry {
+  id        BigInt   @id @default(autoincrement())
+  deviceId  String
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  soc       Float
+  soh       Float
+  voltage   Float
+  current   Float
+  temp      Float
+  power     Float
+  createdAt DateTime @default(now())
+
+  @@index([deviceId, createdAt])
+}
+
+model Alarm {
+  id           String     @id @default(cuid())
+  deviceId     String?
+  device       Device?    @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  level        AlarmLevel
+  cabinetId    String
+  cabinetName  String
+  deviceName   String
+  message      String
+  acknowledged Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+
+  @@index([acknowledged, createdAt])
+  @@index([cabinetId, createdAt])
+  @@index([deviceId, createdAt])
+  @@index([createdAt(sort: Desc)])
+}

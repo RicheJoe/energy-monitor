@@ -1,0 +1,54 @@
+:root {
+  --bg: #071018;
+  --bg-elev: #0c1822;
+  --panel: rgba(12, 24, 34, 0.92);
+  --line: rgba(90, 196, 210, 0.2);
+  --text: #e6f2f6;
+  --muted: #8aa2aa;
+  --faint: rgba(196, 220, 228, 0.72);
+  --cyan: #3cf0ff;
+  --teal: #1eb394;
+  --ok: #7dffc9;
+  --amber: #ffc14d;
+  --orange: #d2611a;
+  --danger: #ff6b64;
+  --shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  color-scheme: dark;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
