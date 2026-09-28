@@ -8,12 +8,15 @@ import { useMonitor } from "@/stores/monitor.js";
 
 const route = useRoute();
 const router = useRouter();
-const { cabinets } = useMonitor();
+const { cabinets, state } = useMonitor();
 
 const selected = ref(null);
 const sceneApi = ref(null);
 
 const cabinetId = computed(() => String(route.params.id || "C01"));
+const cabinetDevices = computed(() =>
+  state.devices.filter(item => item.cabinetId === cabinetId.value)
+);
 const cabinet = computed(
   () => cabinets.value.find(item => item.id === cabinetId.value) || cabinets.value[0]
 );
@@ -91,6 +94,7 @@ function closePanel() {
     <EssScene
       :key="cabinet.id"
       :seed="cabinet.seed"
+      :devices="cabinetDevices"
       @select="onSelect"
       @telemetry="onTelemetry"
       @ready="onReady"

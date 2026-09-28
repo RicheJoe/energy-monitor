@@ -203,6 +203,7 @@ export async function mountEssScene(container, handlers = {}) {
   let selected = null;
   let hovering = false;
   let disposed = false;
+  let usingLive = false;
   let frame = 0;
   let lastTelemetry = 0;
   const clock = new THREE.Clock();
@@ -298,7 +299,8 @@ export async function mountEssScene(container, handlers = {}) {
     if (disposed) return;
     frame = requestAnimationFrame(animate);
     const t = clock.getElapsedTime();
-    tickDeviceData(data, t);
+    if (!usingLive) tickDeviceData(data, t);
+    syncInstanceAttrs();
     clusterMat.uniforms.uTime.value = t;
     pcsMat.uniforms.uTime.value = t;
     bus.material.uniforms.uTime.value = t;
@@ -308,11 +310,6 @@ export async function mountEssScene(container, handlers = {}) {
       const live = list[selected.id];
       if (live) handlers.onTelemetry?.({ ...live });
     }
-    setInstanceAttr(
-      clusterMesh,
-      "aSoc",
-      data.clusters.map(d => d.soc)
-    );
     controls.update();
     renderer.render(scene, camera);
   };
@@ -324,6 +321,29 @@ export async function mountEssScene(container, handlers = {}) {
       selected = null;
       syncInstanceAttrs();
       handlers.onSelect?.(null);
+    },
+    applyLive(rows) {
+      if (!Array.isArray(rows) || !rows.length) return;
+      usingLive = true;
+      rows.forEach(row => {
+        const list = row.kind === "pcs" ? data.pcs : data.clusters;
+        const target = list.find(item => item.id === row.id);
+        if (!target) return;
+        target.soc = row.soc;
+        target.soh = row.soh;
+        target.voltage = row.voltage;
+        target.current = row.current;
+        target.temp = row.temp;
+        target.power = row.power;
+        target.alarm = Boolean(row.alarm);
+        target.alarmText = row.alarmText;
+        target.online = row.online;
+      });
+      if (selected) {
+        const list = selected.kind === "pcs" ? data.pcs : data.clusters;
+        const live = list.find(item => item.id === selected.id);
+        if (live) handlers.onTelemetry?.({ ...live });
+      }
     },
     selectById(kind, id) {
       const list = kind === "cluster" ? data.clusters : data.pcs;

@@ -2,10 +2,14 @@ import cors from 'cors';
 import express from 'express';
 import pinoHttp from 'pino-http';
 import { prisma } from './db';
+import { startIngestion, stopIngestion } from './ingestion';
 import { errorHandler } from './middleware/errorHandler';
+import { mqttReady } from './mqtt';
+import { rabbitReady } from './queue';
 import { redis } from './redis';
 import alarmsRouter from './routes/alarms';
 import devicesRouter from './routes/devices';
+import stationRouter from './routes/station';
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;
@@ -32,18 +36,24 @@ app.get('/health', async (_req, res) => {
   } catch {
     cache = false;
   }
-  const ok = db && cache;
-  res.status(ok ? 200 : 503).json({ ok, db, redis: cache });
+  const mqtt = mqttReady();
+  const rabbitmq = rabbitReady();
+  const ok = db && cache && mqtt && rabbitmq;
+  res.status(ok ? 200 : 503).json({ ok, db, redis: cache, mqtt, rabbitmq });
 });
 
 app.use('/api/devices', devicesRouter);
 app.use('/api/alarms', alarmsRouter);
+app.use('/api/station', stationRouter);
 
 app.use((_req, res) => res.status(404).json({ error: 'Not Found' }));
 app.use(errorHandler);
 
 const server = app.listen(port, () => {
   console.log(`API running at http://localhost:${port}`);
+  void startIngestion().catch((error) => {
+    console.error('Failed to start ingestion', error);
+  });
 });
 
 let shuttingDown = false;
@@ -54,6 +64,7 @@ async function shutdown() {
   console.log('Shutting down...');
   server.close();
   try {
+    await stopIngestion();
     await prisma.$disconnect();
     await redis.quit();
   } finally {

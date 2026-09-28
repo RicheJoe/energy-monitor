@@ -1,20 +1,14 @@
 import { computed, reactive } from "vue";
-import {
-  CABINETS,
-  STATION,
-  buildAlarms,
-  buildCurve,
-  buildDevices
-} from "@/data/station.js";
-
-const startedAt = Date.now();
-const devices = buildDevices();
+import { ackAlarm, fetchAlarms, fetchDevices, fetchPowerCurve } from "@/api.js";
+import { CABINETS, STATION, buildCurve } from "@/data/station.js";
 
 const state = reactive({
-  now: startedAt,
-  devices,
-  alarms: buildAlarms(devices, startedAt),
-  curve: buildCurve()
+  now: Date.now(),
+  devices: [],
+  alarms: [],
+  curve: buildCurve().map(point => ({ ...point, charge: 0, discharge: 0 })),
+  error: "",
+  ready: false
 });
 
 function average(values) {
@@ -22,34 +16,71 @@ function average(values) {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-export function acknowledgeAlarm(id) {
+function toDevice(row) {
+  const match = String(row.id).match(/-(cluster|pcs)-(\d+)$/);
+  const layoutId = match ? Number(match[2]) : 0;
+  return {
+    ...row,
+    key: row.id,
+    id: layoutId,
+    apiId: row.id
+  };
+}
+
+function toAlarm(row) {
+  return {
+    ...row,
+    time: new Date(row.createdAt).getTime()
+  };
+}
+
+function toCurve(rows) {
+  const curve = buildCurve().map(point => ({ ...point, charge: 0, discharge: 0 }));
+  for (const row of rows) {
+    const date = new Date(row.bucket);
+    const index = date.getHours() * 2 + (date.getMinutes() >= 30 ? 1 : 0);
+    const slot = curve[index];
+    if (!slot) continue;
+    slot.charge = Number(row.charge) || 0;
+    slot.discharge = Number(row.discharge) || 0;
+  }
+  return curve;
+}
+
+let refreshing = false;
+
+async function refresh() {
+  if (refreshing) return;
+  refreshing = true;
+  try {
+    const [devices, alarms, curve] = await Promise.all([
+      fetchDevices(),
+      fetchAlarms(),
+      fetchPowerCurve()
+    ]);
+    state.devices = devices.map(toDevice);
+    state.alarms = alarms.map(toAlarm);
+    state.curve = toCurve(curve);
+    state.error = "";
+    state.ready = true;
+  } catch {
+    state.error = "无法连接监测服务";
+  } finally {
+    refreshing = false;
+  }
+}
+
+export async function acknowledgeAlarm(id) {
+  await ackAlarm(id);
   const item = state.alarms.find(alarm => alarm.id === id);
   if (item) item.acknowledged = true;
 }
 
-export function acknowledgeAll() {
-  state.alarms.forEach(alarm => {
+export async function acknowledgeAll() {
+  const open = state.alarms.filter(alarm => !alarm.acknowledged);
+  await Promise.all(open.map(alarm => ackAlarm(alarm.id)));
+  open.forEach(alarm => {
     alarm.acknowledged = true;
-  });
-}
-
-function tick(dt) {
-  state.devices.forEach((item, index) => {
-    if (!item.online) return;
-    if (item.baseCurrent == null) item.baseCurrent = item.current;
-    if (item.baseTemp == null) item.baseTemp = item.temp;
-    if (item.basePower == null) item.basePower = item.power;
-    item.current = Number(
-      Math.max(2, item.baseCurrent + Math.sin(dt * 0.8 + index * 0.4) * 1.2).toFixed(1)
-    );
-    item.temp = Number(
-      Math.min(item.alarm ? 55 : 42, Math.max(22, item.baseTemp + Math.sin(dt * 0.25 + index) * 0.3)).toFixed(1)
-    );
-    if (item.kind === "pcs" && item.basePower) {
-      const sign = Math.sign(item.basePower);
-      const magnitude = Math.abs(item.basePower) + Math.sin(dt * 0.5 + index) * 4;
-      item.power = Number((sign * Math.max(10, magnitude)).toFixed(1));
-    }
   });
 }
 
@@ -60,12 +91,13 @@ export function startMonitor() {
   const clock = setInterval(() => {
     state.now = Date.now();
   }, 1000);
-  const telem = setInterval(() => {
-    tick((Date.now() - startedAt) / 1000);
-  }, 1000);
+  const poll = setInterval(() => {
+    void refresh();
+  }, 3000);
+  void refresh();
   stopMonitor = () => {
     clearInterval(clock);
-    clearInterval(telem);
+    clearInterval(poll);
     stopMonitor = null;
   };
   return stopMonitor;
@@ -77,12 +109,21 @@ export function useMonitor() {
       const devices = state.devices.filter(item => item.cabinetId === meta.id);
       const clusters = devices.filter(item => item.kind === "cluster");
       const pcs = devices.filter(item => item.kind === "pcs");
+      const power = pcs.reduce((sum, item) => sum + (item.online ? item.power || 0 : 0), 0);
+      let mode = meta.mode;
+      if (devices.length) {
+        if (power > 30) mode = "discharge";
+        else if (power < -30) mode = "charge";
+        else mode = "idle";
+      }
       return {
         ...meta,
+        online: devices.length ? devices.some(item => item.online) : meta.online,
+        mode,
         soc: average(clusters.map(item => item.soc)),
         soh: average(clusters.map(item => item.soh)),
         temp: devices.length ? Math.max(...devices.map(item => item.temp)) : 0,
-        power: pcs.reduce((sum, item) => sum + (item.online ? item.power || 0 : 0), 0),
+        power,
         alarmCount: devices.filter(item => item.alarm).length,
         clusterCount: clusters.length,
         pcsCount: pcs.length

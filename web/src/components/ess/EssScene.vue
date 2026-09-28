@@ -1,9 +1,10 @@
 <script setup>
-import { onMounted, onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import { mountEssScene } from "@/components/ess3d/essCabinetScene.js";
 
 const props = defineProps({
-  seed: { type: Number, default: 0 }
+  seed: { type: Number, default: 0 },
+  devices: { type: Array, default: () => [] }
 });
 
 const emit = defineEmits(["select", "hover", "telemetry", "ready"]);
@@ -43,6 +44,7 @@ onMounted(async () => {
         sceneApi?.selectById(kind, id);
       }
     });
+    sceneApi.applyLive(props.devices);
   } catch (err) {
     errorText.value = err?.message || "模型加载失败";
   } finally {
@@ -53,6 +55,14 @@ onMounted(async () => {
 onUnmounted(() => {
   sceneApi?.dispose();
 });
+
+watch(
+  () => props.devices,
+  rows => {
+    sceneApi?.applyLive(rows);
+  },
+  { deep: true }
+);
 </script>
 
 <template>

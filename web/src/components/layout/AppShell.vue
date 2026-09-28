@@ -84,9 +84,9 @@ onUnmounted(() => {
           </em>
         </button>
       </nav>
-      <div class="sider-foot">
+      <div class="sider-foot" :class="{ error: state.error }">
         <span class="live" />
-        遥测刷新中
+        {{ state.error || (state.ready ? "遥测刷新中" : "正在连接监测服务") }}
       </div>
     </aside>
 
@@ -221,6 +221,15 @@ nav button:hover {
   border-radius: 50%;
   background: #7dffc9;
   box-shadow: 0 0 8px #7dffc9;
+}
+
+.sider-foot.error {
+  color: #ffb0aa;
+}
+
+.sider-foot.error .live {
+  background: #ff5a52;
+  box-shadow: 0 0 8px #ff5a52;
 }
 
 .main {
